@@ -18,7 +18,7 @@ DATE_FORMAT = "%B %d, %Y"
 
 ## -- TELEGRAM SETTINGS -- ##
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "MY_BOT_TOKEN_HERE")
 
 # A list of all destinations where the bot should send messages.
 TELEGRAM_TARGETS = [
