@@ -93,23 +93,67 @@ class WikinewsBot:
 
     def get_article_summary(self, title):
         """Extracts the first two sentences from a Wikinews article."""
+        logger.info(f"Getting summary for article: {title}")
+        
         params = {
             "action": "parse", "page": title, "prop": "text",
             "section": 0, "format": "json"
         }
         data = self._make_api_request(params)
         if not (data and 'parse' in data and 'text' in data['parse']):
-            logger.error(f"Failed to get content for '{title}'")
+            logger.error(f"Failed to get content for '{title}' - API response: {data}")
             return ""
         
-        soup = BeautifulSoup(data['parse']['text']['*'], 'html.parser')
-        first_paragraph = soup.find('p', string=lambda t: t and t.strip())
-        if not first_paragraph: return ""
+        # Debug: Log the raw HTML content length
+        raw_html = data['parse']['text']['*']
+        logger.debug(f"Raw HTML content length: {len(raw_html)}")
+        
+        soup = BeautifulSoup(raw_html, 'html.parser')
+        
+        # More comprehensive paragraph finding
+        paragraphs = soup.find_all('p')
+        logger.debug(f"Found {len(paragraphs)} paragraph elements")
+        
+        first_paragraph = None
+        for i, p in enumerate(paragraphs):
+            text_content = p.get_text().strip()
+            logger.debug(f"Paragraph {i}: '{text_content[:100]}...' (length: {len(text_content)})")
+            
+            # Skip empty paragraphs or very short ones (likely not main content)
+            if text_content and len(text_content) > 20:
+                first_paragraph = p
+                break
+        
+        if not first_paragraph:
+            logger.warning(f"No suitable paragraph found for '{title}'")
+            # Try to get any text content as fallback
+            all_text = soup.get_text().strip()
+            logger.debug(f"Fallback: Using all text content (length: {len(all_text)})")
+            if all_text:
+                sentences = split_into_sentences(all_text)
+                if sentences:
+                    summary = ' '.join(sentences[:2])
+                    logger.info(f"Fallback summary extracted: '{summary[:100]}...'")
+                    return summary
+            return ""
         
         text = first_paragraph.get_text().strip()
-        # FIX: Use the new, more accurate sentence splitter
+        logger.debug(f"First paragraph text: '{text[:200]}...' (full length: {len(text)})")
+        
+        # Use the sentence splitter
         sentences = split_into_sentences(text)
+        logger.debug(f"Split into {len(sentences)} sentences:")
+        for i, sentence in enumerate(sentences[:3]):  # Log first 3 sentences for debugging
+            logger.debug(f"  Sentence {i+1}: '{sentence.strip()}'")
+        
+        if not sentences:
+            logger.warning(f"No sentences found after splitting for '{title}'")
+            return ""
+        
+        # Take first two sentences
         summary = ' '.join(sentences[:2])
+        logger.info(f"Final summary for '{title}': '{summary[:100]}...' (full length: {len(summary)})")
+        
         return summary
 
     def get_article_revision_details(self, title):
@@ -172,6 +216,9 @@ def format_published_message(details):
     message += f"{details['date']}\n\n"
     if details['summary']:
         message += f"{details['summary']}\n\n"
+        logger.info(f"Added summary to message: '{details['summary'][:50]}...'")
+    else:
+        logger.warning("No summary available for message")
     message += f"[Read more...]({details['url']})\n\n"
     message += f"([Talk page]({details['talk_page_url']}) | [History]({details['history_url']}))"
     return message
@@ -219,8 +266,9 @@ async def main_async():
             details = {'title': title, 'url': page_url}
 
             if category_config['message_type'] == 'published':
+                summary = bot_instance.get_article_summary(title)
                 details.update({
-                    'summary': bot_instance.get_article_summary(title),
+                    'summary': summary,
                     'date': datetime.strptime(article_data['timestamp'], "%Y-%m-%dT%H:%M:%SZ").strftime(config.DATE_FORMAT),
                     'talk_page_url': f"{config.WIKI_BASE_URL}Talk:{url_slug}",
                     'history_url': f"{config.WIKI_API_URL.replace('api.php', 'index.php')}?title={url_slug}&action=history"
@@ -243,6 +291,7 @@ async def main_async():
                 logger.warning(f"Unknown message type '{category_config['message_type']}'. Skipping.")
                 continue
 
+            logger.info(f"Final message for '{title}':\n{message}")
             await broadcast_message(telegram_bot, message, category_config['telegram_targets'])
             latest_article_data = article_data
         
