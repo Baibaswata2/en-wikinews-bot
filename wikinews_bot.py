@@ -30,6 +30,10 @@ class WikinewsBot:
         self.state_file_path = self._get_state_file_path()
         self.last_checked_article = self.load_last_checked_article()
 
+        self.headers = {
+            'User-Agent': 'WikinewsTelegramBot/1.1 (https://github.com/Baibaswata2/en-wikinews-bot; baibaswataray@gmail.com)'
+        }
+
     def _get_state_file_path(self):
         """Determines the correct path for the state file."""
         if os.environ.get('GITHUB_WORKSPACE'):
@@ -61,9 +65,10 @@ class WikinewsBot:
             logger.error(f"[{self.config['category_name']}] Error saving state file: {e}")
 
     def _make_api_request(self, params):
-        """Helper function to make API requests and handle errors."""
+        """Helper function to make API requests with the required User-Agent."""
         try:
-            response = requests.get(self.api_url, params=params)
+            # Add the headers to every request made to the API
+            response = requests.get(self.api_url, params=params, headers=self.headers)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
@@ -242,3 +247,4 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"An unexpected error occurred: {e}", exc_info=True)
         sys.exit(1)
+
