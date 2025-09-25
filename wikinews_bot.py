@@ -13,6 +13,8 @@ from telegram.error import TelegramError
 
 # Import settings from the configuration file
 import config
+# Import the new sentence splitting logic
+from sentence_splitter import split_into_sentences
 
 # Configure logging
 logging.basicConfig(
@@ -59,7 +61,6 @@ class WikinewsBot:
         """Saves the latest article data (title and timestamp) to the state file."""
         try:
             with open(self.state_file_path, 'w', encoding='utf-8') as f:
-                # Save only the necessary fields to keep the state file clean
                 state_to_save = {
                     'title': article_data.get('title'),
                     'timestamp': article_data.get('timestamp')
@@ -85,7 +86,7 @@ class WikinewsBot:
             "action": "query", "list": "categorymembers",
             "cmtitle": f"Category:{self.config['category_name']}",
             "cmlimit": 50, "cmsort": "timestamp", "cmdir": "desc", "format": "json",
-            "cmprop": "title|timestamp"  # FIX: Explicitly request the timestamp
+            "cmprop": "title|timestamp"
         }
         data = self._make_api_request(params)
         return data.get('query', {}).get('categorymembers', []) if data else []
@@ -106,9 +107,10 @@ class WikinewsBot:
         if not first_paragraph: return ""
         
         text = first_paragraph.get_text().strip()
-        sentences = text.split('. ')
-        summary = '. '.join(sentences[:2])
-        return summary + '.' if not summary.endswith('.') else summary
+        # FIX: Use the new, more accurate sentence splitter
+        sentences = split_into_sentences(text)
+        summary = ' '.join(sentences[:2])
+        return summary
 
     def get_article_revision_details(self, title):
         """Gets creator, editor, and creation time for an article."""
@@ -124,7 +126,7 @@ class WikinewsBot:
         revisions = data['query']['pages'][page_id].get('revisions', [])
         if not revisions: return {}
         
-        first_rev = revisions[-1] # First revision is the last in the list
+        first_rev = revisions[-1]
         last_rev = revisions[0]
         
         return {
@@ -147,7 +149,7 @@ class WikinewsBot:
             logger.warning(f"[{self.config['category_name']}] Last checked article not found. Processing latest.")
             new_articles = [all_articles[0]]
         
-        return new_articles[::-1] # Oldest to newest
+        return new_articles[::-1]
 
 async def broadcast_message(bot, message, targets):
     """Sends a formatted message to a list of Telegram targets."""
@@ -181,7 +183,8 @@ def format_developing_message(details):
         return f"[{user}](https://en.wikinews.org/wiki/User:{user_url_slug}) ([talk](https://en.wikinews.org/wiki/User_talk:{user_url_slug}))"
 
     message = "A new draft has started....\n\n"
-    message += f"*[_{details['title']}_]({details['url']})*\n\n"
+    # FIX: Corrected Markdown for an italic link. This also fixes the links below it.
+    message += f"_[{details['title']}]({details['url']})_\n\n"
     message += f"Page created on: {details['created_date']}\n"
     message += f"Created by: {user_link(details['creator'])}\n"
     message += f"Last edited: {user_link(details['editor'])}\n\n"
@@ -206,7 +209,7 @@ async def main_async():
             continue
 
         logger.info(f"Found {len(new_articles)} new article(s) for '{category_config['category_name']}'.")
-        latest_article_data = None # FIX: Store the whole data dict
+        latest_article_data = None
 
         for article_data in new_articles:
             title = article_data['title']
@@ -241,10 +244,10 @@ async def main_async():
                 continue
 
             await broadcast_message(telegram_bot, message, category_config['telegram_targets'])
-            latest_article_data = article_data # FIX: Update with the full data
+            latest_article_data = article_data
         
         if latest_article_data:
-            bot_instance.save_last_checked_article(latest_article_data) # FIX: Save the full data
+            bot_instance.save_last_checked_article(latest_article_data)
 
 if __name__ == '__main__':
     try:
