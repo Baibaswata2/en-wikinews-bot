@@ -28,7 +28,7 @@ class WikinewsBot:
         self.api_url = config.WIKI_API_URL
         self.base_url = config.WIKI_BASE_URL
         self.state_file_path = self._get_state_file_path()
-        self.last_checked_article = self.load_last_checked_article()
+        self.last_checked_article_title = self.load_last_checked_article_title()
 
         self.headers = {
             'User-Agent': 'WikinewsTelegramBot/1.1 (https://github.com/Baibaswata2/en-wikinews-bot; baibaswataray@gmail.com)'
@@ -40,7 +40,7 @@ class WikinewsBot:
             return os.path.join(os.environ.get('GITHUB_WORKSPACE'), self.config['state_file'])
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), self.config['state_file'])
 
-    def load_last_checked_article(self):
+    def load_last_checked_article_title(self):
         """Loads the last checked article title from the state file."""
         try:
             if os.path.exists(self.state_file_path):
@@ -55,19 +55,23 @@ class WikinewsBot:
         logger.warning(f"[{self.config['category_name']}] State file not found. Using initial article.")
         return self.config['initial_article']
 
-    def save_last_checked_article(self, title):
-        """Saves the latest article title to the state file."""
+    def save_last_checked_article(self, article_data):
+        """Saves the latest article data (title and timestamp) to the state file."""
         try:
             with open(self.state_file_path, 'w', encoding='utf-8') as f:
-                json.dump({'title': title}, f, ensure_ascii=False, indent=4)
-            logger.info(f"[{self.config['category_name']}] Saved last checked article: {title}")
+                # Save only the necessary fields to keep the state file clean
+                state_to_save = {
+                    'title': article_data.get('title'),
+                    'timestamp': article_data.get('timestamp')
+                }
+                json.dump(state_to_save, f, ensure_ascii=False, indent=4)
+            logger.info(f"[{self.config['category_name']}] Saved last checked article: {article_data.get('title')}")
         except Exception as e:
             logger.error(f"[{self.config['category_name']}] Error saving state file: {e}")
 
     def _make_api_request(self, params):
         """Helper function to make API requests with the required User-Agent."""
         try:
-            # Add the headers to every request made to the API
             response = requests.get(self.api_url, params=params, headers=self.headers)
             response.raise_for_status()
             return response.json()
@@ -80,7 +84,8 @@ class WikinewsBot:
         params = {
             "action": "query", "list": "categorymembers",
             "cmtitle": f"Category:{self.config['category_name']}",
-            "cmlimit": 50, "cmsort": "timestamp", "cmdir": "desc", "format": "json"
+            "cmlimit": 50, "cmsort": "timestamp", "cmdir": "desc", "format": "json",
+            "cmprop": "title|timestamp"  # FIX: Explicitly request the timestamp
         }
         data = self._make_api_request(params)
         return data.get('query', {}).get('categorymembers', []) if data else []
@@ -136,7 +141,7 @@ class WikinewsBot:
             return []
 
         try:
-            last_idx = next(i for i, a in enumerate(all_articles) if a['title'] == self.last_checked_article)
+            last_idx = next(i for i, a in enumerate(all_articles) if a['title'] == self.last_checked_article_title)
             new_articles = all_articles[:last_idx]
         except StopIteration:
             logger.warning(f"[{self.config['category_name']}] Last checked article not found. Processing latest.")
@@ -201,7 +206,7 @@ async def main_async():
             continue
 
         logger.info(f"Found {len(new_articles)} new article(s) for '{category_config['category_name']}'.")
-        latest_article_title = None
+        latest_article_data = None # FIX: Store the whole data dict
 
         for article_data in new_articles:
             title = article_data['title']
@@ -236,10 +241,10 @@ async def main_async():
                 continue
 
             await broadcast_message(telegram_bot, message, category_config['telegram_targets'])
-            latest_article_title = title
+            latest_article_data = article_data # FIX: Update with the full data
         
-        if latest_article_title:
-            bot_instance.save_last_checked_article(latest_article_title)
+        if latest_article_data:
+            bot_instance.save_last_checked_article(latest_article_data) # FIX: Save the full data
 
 if __name__ == '__main__':
     try:
@@ -247,4 +252,3 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"An unexpected error occurred: {e}", exc_info=True)
         sys.exit(1)
-
