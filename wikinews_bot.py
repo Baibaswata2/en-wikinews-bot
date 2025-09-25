@@ -13,8 +13,8 @@ from telegram.error import TelegramError
 
 # Import settings from the configuration file
 import config
-# Import the new sentence splitting logic
-from sentence_splitter import split_into_sentences
+# Import the complete content processing functions
+from sentence_splitter import split_into_sentences, cleanup_content
 
 # Configure logging
 logging.basicConfig(
@@ -92,69 +92,108 @@ class WikinewsBot:
         return data.get('query', {}).get('categorymembers', []) if data else []
 
     def get_article_summary(self, title):
-        """Extracts the first two sentences from a Wikinews article."""
+        """Extracts the first two sentences from a Wikinews article using comprehensive cleanup."""
         logger.info(f"Getting summary for article: {title}")
         
+        # METHOD 1: Get the FULL wikitext content (not just first section)
+        wikitext_params = {
+            "action": "query", 
+            "titles": title, 
+            "prop": "revisions",
+            "rvprop": "content", 
+            "rvslots": "main", 
+            "format": "json"
+        }
+        wikitext_data = self._make_api_request(wikitext_params)
+        
+        if (wikitext_data and 'query' in wikitext_data and 'pages' in wikitext_data['query']):
+            page_id = list(wikitext_data['query']['pages'].keys())[0]
+            if page_id != '-1':  # Page exists
+                pages = wikitext_data['query']['pages'][page_id]
+                if 'revisions' in pages and pages['revisions']:
+                    # Get the FULL wikitext content
+                    full_wikitext = pages['revisions'][0]['slots']['main']['*']
+                    logger.debug(f"Got FULL wikitext content, length: {len(full_wikitext)}")
+                    logger.debug(f"First 500 chars of wikitext: {full_wikitext[:500]}")
+                    
+                    # Use the comprehensive cleanup function on FULL content
+                    summary = cleanup_content(full_wikitext, sentence_count=2)
+                    if summary and len(summary.strip()) > 10:  # Make sure we got meaningful content
+                        logger.info(f"SUCCESS: Summary from FULL wikitext: '{summary[:150]}...'")
+                        return summary
+                    else:
+                        logger.warning(f"Wikitext cleanup produced insufficient content: '{summary}'")
+
+        # METHOD 2: Get FULL parsed HTML content (not just section 0)
+        logger.info("Trying to get FULL parsed HTML content")
+        full_html_params = {
+            "action": "parse", 
+            "page": title, 
+            "prop": "text",
+            # Remove section=0 to get FULL content
+            "format": "json"
+        }
+        full_html_data = self._make_api_request(full_html_params)
+        
+        if (full_html_data and 'parse' in full_html_data and 'text' in full_html_data['parse']):
+            raw_html = full_html_data['parse']['text']['*']
+            logger.debug(f"Got FULL HTML content, length: {len(raw_html)}")
+            
+            soup = BeautifulSoup(raw_html, 'html.parser')
+            
+            # Get ALL text content from the full HTML
+            all_text = soup.get_text()
+            logger.debug(f"Extracted all text from HTML, length: {len(all_text)}")
+            logger.debug(f"First 500 chars of extracted text: {all_text[:500]}")
+            
+            # Use sentence splitter on the full text
+            sentences = split_into_sentences(all_text)
+            logger.debug(f"Split full text into {len(sentences)} sentences")
+            
+            if sentences:
+                # Filter sentences to get meaningful content (skip very short ones)
+                meaningful_sentences = []
+                for i, sentence in enumerate(sentences):
+                    clean_sentence = sentence.strip()
+                    if len(clean_sentence) > 15:  # Skip very short sentences
+                        meaningful_sentences.append(clean_sentence)
+                        logger.debug(f"Meaningful sentence {len(meaningful_sentences)}: '{clean_sentence[:100]}...'")
+                        if len(meaningful_sentences) >= 2:
+                            break
+                
+                if meaningful_sentences:
+                    summary = ' '.join(meaningful_sentences[:2])
+                    logger.info(f"SUCCESS: Summary from FULL HTML: '{summary[:150]}...'")
+                    return summary
+        
+        # METHOD 3: Fallback to first section only (original method)
+        logger.info("Falling back to first section only method")
         params = {
             "action": "parse", "page": title, "prop": "text",
             "section": 0, "format": "json"
         }
         data = self._make_api_request(params)
         if not (data and 'parse' in data and 'text' in data['parse']):
-            logger.error(f"Failed to get content for '{title}' - API response: {data}")
+            logger.error(f"Failed to get any content for '{title}'")
             return ""
         
-        # Debug: Log the raw HTML content length
         raw_html = data['parse']['text']['*']
-        logger.debug(f"Raw HTML content length: {len(raw_html)}")
+        logger.debug(f"Fallback: First section HTML length: {len(raw_html)}")
         
         soup = BeautifulSoup(raw_html, 'html.parser')
-        
-        # More comprehensive paragraph finding
         paragraphs = soup.find_all('p')
-        logger.debug(f"Found {len(paragraphs)} paragraph elements")
         
-        first_paragraph = None
         for i, p in enumerate(paragraphs):
             text_content = p.get_text().strip()
-            logger.debug(f"Paragraph {i}: '{text_content[:100]}...' (length: {len(text_content)})")
-            
-            # Skip empty paragraphs or very short ones (likely not main content)
             if text_content and len(text_content) > 20:
-                first_paragraph = p
-                break
-        
-        if not first_paragraph:
-            logger.warning(f"No suitable paragraph found for '{title}'")
-            # Try to get any text content as fallback
-            all_text = soup.get_text().strip()
-            logger.debug(f"Fallback: Using all text content (length: {len(all_text)})")
-            if all_text:
-                sentences = split_into_sentences(all_text)
-                if sentences:
-                    summary = ' '.join(sentences[:2])
-                    logger.info(f"Fallback summary extracted: '{summary[:100]}...'")
+                sentences = split_into_sentences(text_content)
+                if sentences and len(sentences) >= 1:
+                    summary = ' '.join(sentences[:2]) if len(sentences) >= 2 else sentences[0]
+                    logger.info(f"FALLBACK: Summary from first section: '{summary[:100]}...'")
                     return summary
-            return ""
         
-        text = first_paragraph.get_text().strip()
-        logger.debug(f"First paragraph text: '{text[:200]}...' (full length: {len(text)})")
-        
-        # Use the sentence splitter
-        sentences = split_into_sentences(text)
-        logger.debug(f"Split into {len(sentences)} sentences:")
-        for i, sentence in enumerate(sentences[:3]):  # Log first 3 sentences for debugging
-            logger.debug(f"  Sentence {i+1}: '{sentence.strip()}'")
-        
-        if not sentences:
-            logger.warning(f"No sentences found after splitting for '{title}'")
-            return ""
-        
-        # Take first two sentences
-        summary = ' '.join(sentences[:2])
-        logger.info(f"Final summary for '{title}': '{summary[:100]}...' (full length: {len(summary)})")
-        
-        return summary
+        logger.error(f"Could not extract any meaningful content from '{title}'")
+        return ""
 
     def get_article_revision_details(self, title):
         """Gets creator, editor, and creation time for an article."""
