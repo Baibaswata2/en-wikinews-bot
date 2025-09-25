@@ -3,33 +3,36 @@
 import os
 import logging
 
-# The base URL for the English Wikinews API.
+## -- WIKINEWS SETTINGS -- ##
 WIKI_API_URL = "https://en.wikinews.org/w/api.php"
-
-# The base URL for reading Wikinews articles.
 WIKI_BASE_URL = "https://en.wikinews.org/wiki/"
-
-# The category to monitor for new articles.
-CATEGORY_TO_TRACK = "Published"
-
-# The desired date format for messages
 DATE_FORMAT = "%B %d, %Y"
 
+## -- TELEGRAM BOT TOKEN -- ##
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 
-## -- TELEGRAM SETTINGS -- ##
-
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "MY_BOT_TOKEN_HERE")
-
-# A list of all destinations where the bot should send messages.
-TELEGRAM_TARGETS = [
-    {'chat_id': '-1002218836962'}, 
-    {'chat_id': '-1002478167736', 'thread_id': '308'},
-]
-
-## -- BOT OPERATIONAL SETTINGS -- ##
-
-LAST_CHECKED_FILE = "last_checked_article.json"
-
+## -- LOGGING SETTINGS -- ##
 LOGGING_LEVEL = logging.INFO
 
-INITIAL_REFERENCE_ARTICLE = "Example article title from English Wikinews"
+## -- CATEGORY MONITORING CONFIGURATION -- ##
+MONITORED_CATEGORIES = [
+    {
+        "category_name": "Published",
+        "message_type": "published",
+        "state_file": "published_state.json",
+        "initial_article": "UN Security Council to hold emergency meeting on Iran",
+        "telegram_targets": [
+            {'chat_id': '-1002218836962'},
+            {'chat_id': '-1002478167736', 'thread_id': '308'},
+        ]
+    },
+    {
+        "category_name": "Developing",
+        "message_type": "developing", 
+        "state_file": "developing_state.json",
+        "initial_article": "Another recent article title from the Developing category",
+        "telegram_targets": [
+            {'chat_id': 'YOUR_DEVELOPING_NEWS_CHANNEL_ID'}, 
+        ]
+    },
+]
