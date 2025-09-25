@@ -4,12 +4,11 @@ on:
   schedule:
     # Run every 12 hours (at 00:00 and 12:00 UTC)
     - cron: '0 */12 * * *'
-  workflow_dispatch: 
+  workflow_dispatch:
 jobs:
   check-and-post:
     runs-on: ubuntu-latest
     permissions:
-      
       contents: write
     steps:
       - name: Checkout repository
@@ -31,11 +30,12 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: python wikinews_bot.py
 
-      - name: Commit state file
+      - name: Commit state files
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add last_checked_article.json
-          # Check if there are changes to commit to avoid errors
-          git diff --staged --quiet || git commit -m "Update last checked article state"
+          # Add all state files that may have changed using a wildcard
+          git add *_state.json
+          # Commit only if there are actual changes to the state files
+          git diff --staged --quiet || git commit -m "Update last checked article states"
           git push
