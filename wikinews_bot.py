@@ -6,7 +6,6 @@ import json
 import os
 import sys
 import asyncio
-import re  # Import the regular expression module
 from bs4 import BeautifulSoup
 from datetime import datetime
 from telegram import Bot
@@ -14,6 +13,8 @@ from telegram.error import TelegramError
 
 # Import settings from the configuration file
 import config
+# Import the new sentence splitting logic
+from sentence_splitter import split_into_sentences
 
 # Configure logging
 logging.basicConfig(
@@ -103,20 +104,12 @@ class WikinewsBot:
         
         soup = BeautifulSoup(data['parse']['text']['*'], 'html.parser')
         first_paragraph = soup.find('p', string=lambda t: t and t.strip())
-        if not first_paragraph: 
-            return ""
+        if not first_paragraph: return ""
         
         text = first_paragraph.get_text().strip()
-        
-        # --- NEW LOGIC ---
-        # Use a regular expression to split the text into sentences.
-        # This splits after a sentence-ending punctuation mark (. ! ?) that is 
-        # followed by whitespace. It's much more reliable.
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        
-        # Take the first two sentences and join them with a space
+        # FIX: Use the new, more accurate sentence splitter
+        sentences = split_into_sentences(text)
         summary = ' '.join(sentences[:2])
-        
         return summary
 
     def get_article_revision_details(self, title):
@@ -190,6 +183,7 @@ def format_developing_message(details):
         return f"[{user}](https://en.wikinews.org/wiki/User:{user_url_slug}) ([talk](https://en.wikinews.org/wiki/User_talk:{user_url_slug}))"
 
     message = "A new draft has started....\n\n"
+    # FIX: Corrected Markdown for an italic link. This also fixes the links below it.
     message += f"_[{details['title']}]({details['url']})_\n\n"
     message += f"Page created on: {details['created_date']}\n"
     message += f"Created by: {user_link(details['creator'])}\n"
