@@ -20,19 +20,18 @@ MONITORED_CATEGORIES = [
         "category_name": "Published",
         "message_type": "published",
         "state_file": "published_state.json",
-        "initial_article": "UN Security Council to hold emergency meeting on Iran",
+        "initial_article": "New York judge rules terrorism charges legally insufficient in Mangione case",
         "telegram_targets": [
-            {'chat_id': '-1002218836962'},
-            {'chat_id': '-1002478167736', 'thread_id': '308'},
+            {'chat_id': '-1002591426405', 'thread_id': '5'},
         ]
     },
     {
         "category_name": "Developing",
         "message_type": "developing", 
         "state_file": "developing_state.json",
-        "initial_article": "Another recent article title from the Developing category",
+        "initial_article": "GrowHo launches tech platform to support Grampanchayats and rural employment",
         "telegram_targets": [
-            {'chat_id': 'YOUR_DEVELOPING_NEWS_CHANNEL_ID'}, 
+            {'chat_id': '-1002591426405', 'thread_id': '5'},
         ]
     },
 ]
