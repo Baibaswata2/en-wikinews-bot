@@ -1,7 +1,6 @@
 # sentence_splitter.py
 import re
 
-# Complete sentence splitting implementation based on the JavaScript version
 EXCEPTION_STRING = '...; Mr.; Mrs.; Dr.; Jr.; Sr.; Prof.; St.; Ave.; Corp.; Inc.; Ltd.; Co.; Gov.; Capt.; Sgt.; et al.; vs.; e.t.a.; .A.; .B.; .C.; .D.; .E.; .F.; .G.; .H.; .I.; .J.; .K.; .L.; .M.; .N.; .O.; .P.; .Q.; .R.; .S.; .T.; .U.; .V.; .W.; .X.; .Y.; .Z.;  A.;  B.;  C.;  D.;  E.;  F.;  G.;  H.;  I.;  J.;  K.;  L.;  M.;  N.;  O.;  P.;  Q.;  R.;  S.;  T.;  U.;  V.;  W.;  X.;  Y.;  Z.; .a.; .b.; .c.; .d.; .e.; .f.; .g.; .h.; .i.; .j.; .k.; .l.; .m; .n.; .o.; .p.; .q.; .r.; .s.; .t.; .u.; .v.; .w.; .x.; .y.; .z.; .a; .b; .c; .d; .e; .f; .g; .h; .i; .j; .k; .l; .m; .n; .o; .p; .q; .r; .s; .t; .u; .v; .w; .x; .y; .z; 0.0; 0.1; 0.2; 0.3; 0.4; 0.5; 0.6; 0.7; 0.8; 0.9; 1.0; 1.1; 1.2; 1.3; 1.4; 1.5; 1.6; 1.7; 1.8; 1.9; 2.0; 2.1; 2.2; 2.3; 2.4; 2.5; 2.6; 2.7; 2.8; 2.9; 3.0; 3.1; 3.2; 3.3; 3.4; 3.5; 3.6; 3.7; 3.8; 3.9; 4.0; 4.1; 4.2; 4.3; 4.4; 4.5; 4.6; 4.7; 4.8; 4.9; 5.0; 5.1; 5.2; 5.3; 5.4; 5.5; 5.6; 5.7; 5.8; 5.9; 6.0; 6.1; 6.2; 6.3; 6.4; 6.5; 6.6; 6.7; 6.8; 6.9; 7.0; 7.1; 7.2; 7.3; 7.4; 7.5; 7.6; 7.7; 7.8; 7.9; 8.0; 8.1; 8.2; 8.3; 8.4; 8.5; 8.6; 8.7; 8.8; 8.9; 9.0; 9.1; 9.2; 9.3; 9.4; 9.5; 9.6; 9.7; 9.8; 9.9. .0; .1; .2; .3; .4; .5; .6; .7; .8; .9;'
 
 PERIOD_PLACEHOLDER = 'PERIOD_PLACEHOLDER'
@@ -10,24 +9,18 @@ PERIOD_EXCEPTIONS = EXCEPTION_STRING.split(EXCEPTION_STRING_SEPARATOR)
 PERIOD_EXCEPTION_PLACEHOLDERS = EXCEPTION_STRING.replace('.', PERIOD_PLACEHOLDER).split(EXCEPTION_STRING_SEPARATOR)
 
 def insert_placeholders(text, period_exceptions, period_exception_placeholders):
-    """Helper function to insert placeholders for period exceptions"""
     modified_text = text
     for i in range(len(period_exceptions)):
         modified_text = modified_text.replace(period_exceptions[i], period_exception_placeholders[i])
     return modified_text
 
 def remove_placeholders(text, period_exceptions, period_exception_placeholders):
-    """Helper function to remove placeholders and restore original periods"""
     modified_text = text
     for i in range(len(period_exceptions)):
         modified_text = modified_text.replace(period_exception_placeholders[i], period_exceptions[i])
     return modified_text
 
 def split_into_sentences(text):
-    """
-    Splits text into sentences using a placeholder method for exceptions.
-    This is a direct Python translation of the JavaScript implementation.
-    """
     if not text:
         return []
     
@@ -178,10 +171,6 @@ def remove_headers(text):
     return re.sub(r'==+\s*[^=]+\s*==+', '', text)
 
 def cleanup_content(content, sentence_count=2):
-    """
-    Complete content cleanup function that matches the JavaScript implementation.
-    Cleans wikitext and extracts the specified number of sentences.
-    """
     if not content:
         return ''
     
