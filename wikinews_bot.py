@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import asyncio
+import re
 from bs4 import BeautifulSoup
 from datetime import datetime
 from telegram import Bot
@@ -23,6 +24,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def escape_markdown_v2(text: str) -> str:
+    """Escapes text for Telegram's MarkdownV2 parse mode."""
+    if not isinstance(text, str):
+        return ''
+    # A list of characters to escape
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    # Use re.sub to escape only the characters in the list
+    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
+
 class WikinewsBot:
     """A bot to monitor a specific Wikinews category based on a given configuration."""
     def __init__(self, category_config):
@@ -33,7 +43,7 @@ class WikinewsBot:
         self.last_checked_article_title = self.load_last_checked_article_title()
 
         self.headers = {
-            'User-Agent': 'WikinewsTelegramBot/1.1 (https://github.com/Baibaswata2/en-wikinews-bot; baibaswataray@gmail.com)'
+            'User-Agent': 'WikinewsTelegramBot/1.2 (https://github.com/Baibaswata2/en-wikinews-bot; baibaswataray@gmail.com)'
         }
 
     def _get_state_file_path(self):
@@ -108,7 +118,7 @@ class WikinewsBot:
         
         if (wikitext_data and 'query' in wikitext_data and 'pages' in wikitext_data['query']):
             page_id = list(wikitext_data['query']['pages'].keys())[0]
-            if page_id != '-1':  # Page exists
+            if page_id != '-1': # Page exists
                 pages = wikitext_data['query']['pages'][page_id]
                 if 'revisions' in pages and pages['revisions']:
                     # Get the FULL wikitext content
@@ -118,7 +128,7 @@ class WikinewsBot:
                     
                     # Use the comprehensive cleanup function on FULL content
                     summary = cleanup_content(full_wikitext, sentence_count=2)
-                    if summary and len(summary.strip()) > 10:  # Make sure we got meaningful content
+                    if summary and len(summary.strip()) > 10: # Make sure we got meaningful content
                         logger.info(f"SUCCESS: Summary from FULL wikitext: '{summary[:150]}...'")
                         return summary
                     else:
@@ -155,7 +165,7 @@ class WikinewsBot:
                 meaningful_sentences = []
                 for i, sentence in enumerate(sentences):
                     clean_sentence = sentence.strip()
-                    if len(clean_sentence) > 15:  # Skip very short sentences
+                    if len(clean_sentence) > 15: # Skip very short sentences
                         meaningful_sentences.append(clean_sentence)
                         logger.debug(f"Meaningful sentence {len(meaningful_sentences)}: '{clean_sentence[:100]}...'")
                         if len(meaningful_sentences) >= 2:
@@ -235,14 +245,14 @@ class WikinewsBot:
         return new_articles[::-1]
 
 async def broadcast_message(bot, message, targets):
-    """Sends a formatted message to a list of Telegram targets."""
+    """Sends a formatted message to a list of Telegram targets using MarkdownV2."""
     for target in targets:
         try:
             await bot.send_message(
                 chat_id=target['chat_id'],
                 message_thread_id=target.get('thread_id'),
                 text=message,
-                parse_mode='Markdown',
+                parse_mode='MarkdownV2', # Use the more reliable MarkdownV2
                 disable_web_page_preview=True
             )
             logger.info(f"Successfully sent message to target: {target}")
@@ -250,11 +260,15 @@ async def broadcast_message(bot, message, targets):
             logger.error(f"Failed to send message to {target}: {e}")
 
 def format_published_message(details):
-    """Creates the message for a 'Published' article."""
-    message = f"*{details['title']}*\n\n"
-    message += f"{details['date']}\n\n"
+    """Creates the message for a 'Published' article using MarkdownV2."""
+    title = escape_markdown_v2(details['title'])
+    date = escape_markdown_v2(details['date'])
+    
+    message = f"**{title}**\n\n"
+    message += f"{date}\n\n"
     if details['summary']:
-        message += f"{details['summary']}\n\n"
+        summary = escape_markdown_v2(details['summary'])
+        message += f"{summary}\n\n"
         logger.info(f"Added summary to message: '{details['summary'][:50]}...'")
     else:
         logger.warning("No summary available for message")
@@ -263,18 +277,26 @@ def format_published_message(details):
     return message
 
 def format_developing_message(details):
-    """Creates the message for a 'Developing' article."""
-    def user_link(user):
-        user_url_slug = user.replace(' ', '_')
-        return f"[{user}](https://en.wikinews.org/wiki/User:{user_url_slug}) ([talk](https://en.wikinews.org/wiki/User_talk:{user_url_slug}))"
+    """Creates the message for a 'Developing' article with the new format using MarkdownV2."""
+    def format_user_link(username):
+        """Helper to create a MarkdownV2 link for a wiki user."""
+        if not username or username == 'N/A':
+            return 'N/A'
+        user_url_slug = username.replace(' ', '_')
+        user_url = f"{config.WIKI_BASE_URL}User:{user_url_slug}"
+        return f"[{escape_markdown_v2(username)}]({user_url})"
 
-    message = "A new draft has started....\n\n"
-    # FIX: Corrected Markdown for an italic link. This also fixes the links below it.
-    message += f"_[{details['title']}]({details['url']})_\n\n"
-    message += f"Page created on: {details['created_date']}\n"
-    message += f"Created by: {user_link(details['creator'])}\n"
-    message += f"Last edited: {user_link(details['editor'])}\n\n"
-    message += f"([Help develop the article]({details['edit_url']}) | [discuss it]({details['talk_page_url']}))"
+    escaped_title = escape_markdown_v2(details['title'])
+    created_date = escape_markdown_v2(details['created_date'])
+
+    message = (
+        f"📝 **New draft article started**\n"
+        f"**Title:** [{escaped_title}]({details['url']})\n\n"
+        f"**Created on:** {created_date}\n"
+        f"**Created by:** {format_user_link(details.get('creator', 'N/A'))}\n"
+        f"**Last edited by:** {format_user_link(details.get('editor', 'N/A'))}\n\n"
+        f"([Help improve this draft]({details['edit_url']}) • [Join the discussion]({details['talk_page_url']}))"
+    )
     return message
 
 async def main_async():
@@ -299,6 +321,7 @@ async def main_async():
 
         for article_data in new_articles:
             title = article_data['title']
+            # Correctly replace spaces with underscores for the URL path
             url_slug = title.replace(' ', '_')
             page_url = f"{config.WIKI_BASE_URL}{url_slug}"
             
@@ -316,11 +339,12 @@ async def main_async():
 
             elif category_config['message_type'] == 'developing':
                 rev_details = bot_instance.get_article_revision_details(title)
-                created_dt = datetime.strptime(rev_details['created_utc'], "%Y-%m-%dT%H:%M:%SZ")
+                created_dt = datetime.strptime(rev_details.get('created_utc', article_data['timestamp']), "%Y-%m-%dT%H:%M:%SZ")
                 details.update({
                     'creator': rev_details.get('creator', 'N/A'),
                     'editor': rev_details.get('editor', 'N/A'),
-                    'created_date': created_dt.strftime(f"{config.DATE_FORMAT} %H:%M UTC"),
+                    # Match the format: "September 26, 2025, 11:41 UTC"
+                    'created_date': created_dt.strftime("%B %d, %Y, %H:%M UTC"),
                     'edit_url': f"{config.WIKI_API_URL.replace('api.php', 'index.php')}?title={url_slug}&action=edit",
                     'talk_page_url': f"{config.WIKI_BASE_URL}Talk:{url_slug}"
                 })
