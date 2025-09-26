@@ -1,5 +1,3 @@
-# config.py
-
 import os
 import logging
 
@@ -9,7 +7,7 @@ WIKI_BASE_URL = "https://en.wikinews.org/wiki/"
 DATE_FORMAT = "%B %d, %Y"
 
 ## -- TELEGRAM BOT TOKEN -- ##
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 ## -- LOGGING SETTINGS -- ##
 LOGGING_LEVEL = logging.INFO
@@ -22,16 +20,16 @@ MONITORED_CATEGORIES = [
         "state_file": "published_state.json",
         "initial_article": "New York judge rules terrorism charges legally insufficient in Mangione case",
         "telegram_targets": [
-            {'chat_id': '-1002591426405', 'thread_id': '5'},
-        ]
+            {"chat_id": "-1002591426405", "thread_id": "5"},
+        ],
     },
     {
         "category_name": "Developing",
-        "message_type": "developing", 
+        "message_type": "developing",
         "state_file": "developing_state.json",
         "initial_article": "GrowHo launches tech platform to support Grampanchayats and rural employment",
         "telegram_targets": [
-            {'chat_id': '-1002591426405', 'thread_id': '5'},
-        ]
+            {"chat_id": "-1002591426405", "thread_id": "5"},
+        ],
     },
 ]
