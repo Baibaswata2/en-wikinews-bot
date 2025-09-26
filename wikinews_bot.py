@@ -311,13 +311,14 @@ def format_developing_message(details):
     """Creates the message for a 'Developing' article with proper formatting."""
     def user_link(user):
         user_url_slug = user.replace(' ', '_')
-        return f"[[User:{user}|{user}]]"
+        user_page_url = f"https://en.wikinews.org/wiki/User:{user_url_slug}"
+        return f"[{user}]({user_page_url})"
 
     message = "📝 New draft article started\n\n"
     
-    # Fixed: Proper URL encoding and clean title link
+    # Fixed: Keep colons in URLs (don't replace with underscores)
     title = details['title']
-    url_slug = title.replace(' ', '_').replace(':', '_')  # Fix URL encoding
+    url_slug = title.replace(' ', '_')  # Only replace spaces, keep colons
     article_url = f"https://en.wikinews.org/wiki/{url_slug}"
     
     message += f"**Title:** [{title}]({article_url})\n\n"
