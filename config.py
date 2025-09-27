@@ -36,7 +36,7 @@ MONITORED_CATEGORIES = [
         "category_name": "Review",
         "message_type": "review",
         "state_file": "review_state.json",
-        "initial_article": "", 
+        "initial_article": "Unification Church leader Hak Ja Han arrested in South Korea over bribery allegations", 
         "telegram_targets": [
             {"chat_id": "-1002591426405", "thread_id": "5"},
         ],
