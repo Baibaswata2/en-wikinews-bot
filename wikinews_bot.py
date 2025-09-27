@@ -6,13 +6,12 @@ import json
 import os
 import sys
 import asyncio
-from bs4 import BeautifulSoup
 from datetime import datetime
 from telegram import Bot
 from telegram.error import TelegramError
 
 import config
-from sentence_splitter import split_into_sentences, cleanup_content
+from formatters import PublishedFormatter, DevelopingFormatter, ReviewFormatter
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -32,6 +31,16 @@ class WikinewsBot:
         self.headers = {
             'User-Agent': 'WikinewsTelegramBot/1.1 (https://github.com/Baibaswata2/en-wikinews-bot; baibaswataray@gmail.com)'
         }
+
+        # Initialize appropriate formatter
+        if category_config['message_type'] == 'published':
+            self.formatter = PublishedFormatter(self.api_url, self.base_url, self.headers)
+        elif category_config['message_type'] == 'developing':
+            self.formatter = DevelopingFormatter(self.api_url, self.base_url, self.headers)
+        elif category_config['message_type'] == 'review':
+            self.formatter = ReviewFormatter(self.api_url, self.base_url, self.headers)
+        else:
+            raise ValueError(f"Unknown message type: {category_config['message_type']}")
 
     def _get_state_file_path(self):
         """Determines the correct path for the state file."""
@@ -88,154 +97,6 @@ class WikinewsBot:
         data = self._make_api_request(params)
         return data.get('query', {}).get('categorymembers', []) if data else []
 
-    def get_article_summary(self, title):
-        """Extracts the first two sentences from a Wikinews article using comprehensive cleanup."""
-        logger.info(f"Getting summary for article: {title}")
-
-        # METHOD 1: Extract from full wikitext content
-        wikitext_params = {
-            "action": "query", 
-            "titles": title, 
-            "prop": "revisions",
-            "rvprop": "content", 
-            "rvslots": "main", 
-            "format": "json"
-        }
-        wikitext_data = self._make_api_request(wikitext_params)
-        
-        if (wikitext_data and 'query' in wikitext_data and 'pages' in wikitext_data['query']):
-            page_id = list(wikitext_data['query']['pages'].keys())[0]
-            if page_id != '-1':
-                pages = wikitext_data['query']['pages'][page_id]
-                if 'revisions' in pages and pages['revisions']:
-                    full_wikitext = pages['revisions'][0]['slots']['main']['*']
-                    logger.debug(f"Got FULL wikitext content, length: {len(full_wikitext)}")
-                    
-                    summary = cleanup_content(full_wikitext, sentence_count=2)
-                    if summary and len(summary.strip()) > 10:
-                        logger.info(f"SUCCESS: Summary from FULL wikitext: '{summary[:150]}...'")
-                        return summary
-                    else:
-                        logger.warning(f"Wikitext cleanup produced insufficient content: '{summary}'")
-
-        # METHOD 2: Extract from full parsed HTML content
-        logger.info("Trying to get FULL parsed HTML content")
-        full_html_params = {
-            "action": "parse", 
-            "page": title, 
-            "prop": "text",
-            "format": "json"
-        }
-        full_html_data = self._make_api_request(full_html_params)
-        
-        if (full_html_data and 'parse' in full_html_data and 'text' in full_html_data['parse']):
-            raw_html = full_html_data['parse']['text']['*']
-            logger.debug(f"Got FULL HTML content, length: {len(raw_html)}")
-            
-            soup = BeautifulSoup(raw_html, 'html.parser')
-            all_text = soup.get_text()
-            logger.debug(f"Extracted all text from HTML, length: {len(all_text)}")
-            
-            sentences = split_into_sentences(all_text)
-            logger.debug(f"Split full text into {len(sentences)} sentences")
-            
-            if sentences:
-                # Filter out very short sentences to get meaningful content
-                meaningful_sentences = []
-                for i, sentence in enumerate(sentences):
-                    clean_sentence = sentence.strip()
-                    if len(clean_sentence) > 15:
-                        meaningful_sentences.append(clean_sentence)
-                        logger.debug(f"Meaningful sentence {len(meaningful_sentences)}: '{clean_sentence[:100]}...'")
-                        if len(meaningful_sentences) >= 2:
-                            break
-                
-                if meaningful_sentences:
-                    summary = ' '.join(meaningful_sentences[:2])
-                    logger.info(f"SUCCESS: Summary from FULL HTML: '{summary[:150]}...'")
-                    return summary
-        
-        # METHOD 3: Fallback to first section only
-        logger.info("Falling back to first section only method")
-        params = {
-            "action": "parse", "page": title, "prop": "text",
-            "section": 0, "format": "json"
-        }
-        data = self._make_api_request(params)
-        if not (data and 'parse' in data and 'text' in data['parse']):
-            logger.error(f"Failed to get content for '{title}' - API response: {data}")
-            return ""
-
-        raw_html = data['parse']['text']['*']
-        logger.debug(f"Fallback: First section HTML length: {len(raw_html)}")
-
-        soup = BeautifulSoup(raw_html, 'html.parser')
-        paragraphs = soup.find_all('p')
-        logger.debug(f"Found {len(paragraphs)} paragraph elements")
-
-        first_paragraph = None
-        for i, p in enumerate(paragraphs):
-            text_content = p.get_text().strip()
-            logger.debug(f"Paragraph {i}: '{text_content[:100]}...' (length: {len(text_content)})")
-            
-            # Skip empty paragraphs or very short ones
-            if text_content and len(text_content) > 20:
-                first_paragraph = p
-                break
-        
-        if not first_paragraph:
-            logger.warning(f"No suitable paragraph found for '{title}'")
-            # Try to get any text content as fallback
-            all_text = soup.get_text().strip()
-            logger.debug(f"Fallback: Using all text content (length: {len(all_text)})")
-            if all_text:
-                sentences = split_into_sentences(all_text)
-                if sentences:
-                    summary = ' '.join(sentences[:2])
-                    logger.info(f"Fallback summary extracted: '{summary[:100]}...'")
-                    return summary
-            return ""
-        
-        text = first_paragraph.get_text().strip()
-        logger.debug(f"First paragraph text: '{text[:200]}...' (full length: {len(text)})")
-        
-        sentences = split_into_sentences(text)
-        logger.debug(f"Split into {len(sentences)} sentences:")
-        for i, sentence in enumerate(sentences[:3]):
-            logger.debug(f"  Sentence {i+1}: '{sentence.strip()}'")
-        
-        if not sentences:
-            logger.warning(f"No sentences found after splitting for '{title}'")
-            return ""
-        
-        summary = ' '.join(sentences[:2])
-        logger.info(f"Final summary for '{title}': '{summary[:100]}...' (full length: {len(summary)})")
-        return summary
-
-    def get_article_revision_details(self, title):
-        """Gets creator, editor, and creation time for an article."""
-        params = {
-            "action": "query", "titles": title, "prop": "revisions",
-            "rvprop": "user|timestamp", "rvlimit": "max", "format": "json"
-        }
-        data = self._make_api_request(params)
-        if not data or not data.get('query', {}).get('pages'):
-            return {}
-
-        page_id = list(data['query']['pages'].keys())[0]
-        revisions = data['query']['pages'][page_id].get('revisions', [])
-        if not revisions: 
-            return {}
-
-        first_rev = revisions[-1]
-        last_rev = revisions[0]
-
-        return {
-            'creator': first_rev.get('user'),
-            'editor': last_rev.get('user'),
-            'created_utc': first_rev.get('timestamp')
-        }
-
     def check_for_new_articles(self):
         """Checks for new articles since the last run and returns them in chronological order."""
         all_articles = self.get_category_members()
@@ -243,12 +104,19 @@ class WikinewsBot:
             logger.info(f"[{self.config['category_name']}] No articles found.")
             return []
 
+        # For Review category, if no initial article is set, use the first article found
+        if not self.last_checked_article_title and self.config['category_name'] == 'Review':
+            if all_articles:
+                self.last_checked_article_title = all_articles[0]['title']
+                logger.info(f"[{self.config['category_name']}] Setting initial article to: {self.last_checked_article_title}")
+                return []
+
         try:
             last_idx = next(i for i, a in enumerate(all_articles) if a['title'] == self.last_checked_article_title)
             new_articles = all_articles[:last_idx]
         except StopIteration:
             logger.warning(f"[{self.config['category_name']}] Last checked article not found. Processing latest.")
-            new_articles = [all_articles[0]]
+            new_articles = [all_articles[0]] if all_articles else []
 
         return new_articles[::-1]
 
@@ -266,45 +134,6 @@ async def broadcast_message(bot, message, targets):
             logger.info(f"Successfully sent message to target: {target}")
         except TelegramError as e:
             logger.error(f"Failed to send message to {target}: {e}")
-
-def format_published_message(details):
-    """Creates the message for a 'Published' article."""
-    message = f"*{details['title']}*\n\n"
-    message += f"{details['date']}\n\n"
-    if details['summary']:
-        message += f"{details['summary']}\n\n"
-        logger.info(f"Added summary to message: '{details['summary'][:50]}...'")
-    else:
-        logger.warning("No summary available for message")
-    message += f"[Read more...]({details['url']})\n\n"
-    message += f"([Talk page]({details['talk_page_url']}) | [History]({details['history_url']}))"
-    return message
-
-def format_developing_message(details):
-    """Creates the message for a 'Developing' article with proper formatting."""
-    def user_link(user):
-        user_url_slug = user.replace(' ', '_')
-        user_page_url = f"https://en.wikinews.org/wiki/User:{user_url_slug}"
-        return f"[{user}]({user_page_url})"
-
-    message = "📝 New draft article started\n\n"
-    
-    # Keep colons in URLs, only replace spaces
-    title = details['title']
-    url_slug = title.replace(' ', '_')
-    article_url = f"https://en.wikinews.org/wiki/{url_slug}"
-    
-    message += f"**Title:** [{title}]({article_url})\n\n"
-    message += f"**Created on:** {details['created_date']}\n"
-    message += f"**Created by:** {user_link(details['creator'])}\n"
-    message += f"**Last edited by:** {user_link(details['editor'])}\n\n"
-    
-    edit_url = f"https://en.wikinews.org/w/index.php?title={url_slug}&action=edit"
-    talk_url = f"https://en.wikinews.org/wiki/Talk:{url_slug}"
-    
-    message += f"([Help improve this draft]({edit_url}) • [Join the discussion]({talk_url}))"
-    
-    return message
 
 async def main_async():
     """Main function to run the bot check for all configured categories."""
@@ -329,39 +158,16 @@ async def main_async():
         for article_data in new_articles:
             title = article_data['title']
             url_slug = title.replace(' ', '_')
-            page_url = f"{config.WIKI_BASE_URL}{url_slug}"
 
-            details = {'title': title, 'url': page_url}
-
-            if category_config['message_type'] == 'published':
-                summary = bot_instance.get_article_summary(title)
-                details.update({
-                    'summary': summary,
-                    'date': datetime.strptime(article_data['timestamp'], "%Y-%m-%dT%H:%M:%SZ").strftime(config.DATE_FORMAT),
-                    'talk_page_url': f"{config.WIKI_BASE_URL}Talk:{url_slug}",
-                    'history_url': f"{config.WIKI_API_URL.replace('api.php', 'index.php')}?title={url_slug}&action=history"
-                })
-                message = format_published_message(details)
-
-            elif category_config['message_type'] == 'developing':
-                rev_details = bot_instance.get_article_revision_details(title)
-                created_dt = datetime.strptime(rev_details['created_utc'], "%Y-%m-%dT%H:%M:%SZ")
-                details.update({
-                    'creator': rev_details.get('creator', 'N/A'),
-                    'editor': rev_details.get('editor', 'N/A'),
-                    'created_date': created_dt.strftime(f"{config.DATE_FORMAT} %H:%M UTC"),
-                    'edit_url': f"{config.WIKI_API_URL.replace('api.php', 'index.php')}?title={url_slug}&action=edit",
-                    'talk_page_url': f"{config.WIKI_BASE_URL}Talk:{url_slug}"
-                })
-                message = format_developing_message(details)
-
-            else:
-                logger.warning(f"Unknown message type '{category_config['message_type']}'. Skipping.")
+            # Use the appropriate formatter to create the message
+            try:
+                message = bot_instance.formatter.format_message(article_data, url_slug)
+                logger.info(f"Final message for '{title}':\n{message}")
+                await broadcast_message(telegram_bot, message, category_config['telegram_targets'])
+                latest_article_data = article_data
+            except Exception as e:
+                logger.error(f"Error formatting message for '{title}': {e}")
                 continue
-
-            logger.info(f"Final message for '{title}':\n{message}")
-            await broadcast_message(telegram_bot, message, category_config['telegram_targets'])
-            latest_article_data = article_data
 
         if latest_article_data:
             bot_instance.save_last_checked_article(latest_article_data)
