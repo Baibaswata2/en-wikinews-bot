@@ -30,6 +30,8 @@ MONITORED_CATEGORIES = [
         "initial_article": "GrowHo launches tech platform to support Grampanchayats and rural employment",
         "telegram_targets": [
             {"chat_id": "-1002591426405", "thread_id": "5"},
+            {"chat_id": "-1002113193375", "thread_id": "1110"},
+
         ],
     },
     {
