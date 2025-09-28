@@ -18,5 +18,8 @@ jobs:
           
           repository: ${{ github.repository }}
           
+          # Consider all runs for deletion, regardless of age
+          retain_days: 0
+          
           # The number of most recent workflow runs to keep
-          keep_minimum_runs: 25
+          keep_minimum_runs: 20
