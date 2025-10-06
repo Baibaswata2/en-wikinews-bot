@@ -159,6 +159,12 @@ async def main_async():
             title = article_data['title']
             url_slug = title.replace(' ', '_')
 
+            # For Published category, verify the article has been properly reviewed
+            if category_config['message_type'] == 'published':
+                if not bot_instance.formatter.check_article_review_status(title):
+                    logger.warning(f"Skipping '{title}' - No valid review found (false detection)")
+                    continue
+
             # Use the appropriate formatter to create the message
             try:
                 message = bot_instance.formatter.format_message(article_data, url_slug)
