@@ -1,5 +1,6 @@
 import logging
 import requests
+import re
 from datetime import datetime
 from bs4 import BeautifulSoup
 from sentence_splitter import split_into_sentences, cleanup_content
@@ -22,6 +23,57 @@ class PublishedFormatter:
         except requests.RequestException as e:
             logger.error(f"API request failed: {e}")
             return None
+
+    def check_article_review_status(self, title):
+        """
+        Checks if the article's talk page contains a 'Review of revision [number] [Passed]' pattern.
+        Returns True if the article has been properly reviewed and passed, False otherwise.
+        """
+        talk_page_title = f"Talk:{title}"
+        logger.info(f"Checking review status for talk page: {talk_page_title}")
+        
+        # Get the talk page content
+        params = {
+            "action": "query",
+            "titles": talk_page_title,
+            "prop": "revisions",
+            "rvprop": "content",
+            "rvslots": "main",
+            "format": "json"
+        }
+        
+        data = self._make_api_request(params)
+        
+        if not data or 'query' not in data or 'pages' not in data['query']:
+            logger.warning(f"Failed to retrieve talk page data for '{talk_page_title}'")
+            return False
+        
+        pages = data['query']['pages']
+        page_id = list(pages.keys())[0]
+        
+        # Check if talk page exists (page_id == '-1' means page doesn't exist)
+        if page_id == '-1':
+            logger.warning(f"Talk page does not exist for '{title}' - False detection")
+            return False
+        
+        # Get the talk page content
+        page_data = pages[page_id]
+        if 'revisions' not in page_data or not page_data['revisions']:
+            logger.warning(f"No revisions found on talk page for '{title}'")
+            return False
+        
+        talk_page_content = page_data['revisions'][0]['slots']['main']['*']
+        
+        # Check for the review pattern: == Review of revision [number] [Passed] ==
+        # Using regex to match any revision number
+        review_pattern = r'==\s*Review of revision \d+ \[Passed\]\s*=='
+        
+        if re.search(review_pattern, talk_page_content):
+            logger.info(f"✓ Article '{title}' has been properly reviewed and passed")
+            return True
+        else:
+            logger.warning(f"✗ Article '{title}' does not have a passed review - False detection")
+            return False
 
     def get_article_summary(self, title):
         """Extracts the first two sentences from a Wikinews article using comprehensive cleanup."""
