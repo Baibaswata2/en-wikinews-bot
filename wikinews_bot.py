@@ -306,71 +306,31 @@ async def broadcast_message(bot, message, targets):
 
 
 # ------------------------------------------------------------------
-# Main
+# Main — farewell run
 # ------------------------------------------------------------------
 
+FAREWELL_MESSAGE = (
+    "Hello community, I am the notification bot. I will stop working from today. "
+    "I may be reactivated in the future with the new Wikinews Pulse site. "
+    "Until then, goodbye and thank you all."
+)
+
+FAREWELL_TARGETS = [
+    {"chat_id": "-1002591426405", "thread_id": "5"},
+    {"chat_id": "-1002113193375", "thread_id": "1112"},
+]
+
 async def main_async():
-    """Main function to run the bot check for all configured categories."""
+    """Sends the farewell message to the specified targets and exits."""
     if not config.BOT_TOKEN:
         logger.error("Telegram bot token is not configured.")
         sys.exit(1)
 
     telegram_bot = Bot(token=config.BOT_TOKEN)
 
-    for category_config in config.MONITORED_CATEGORIES:
-        logger.info(f"--- Checking category: {category_config['category_name']} ---")
-        bot_instance = WikinewsBot(category_config)
-        new_articles = bot_instance.check_for_new_articles()
-
-        if not new_articles:
-            logger.info(f"No new articles for '{category_config['category_name']}'.")
-            continue
-
-        logger.info(
-            f"Found {len(new_articles)} new article(s) for '{category_config['category_name']}'."
-        )
-
-        # Track which articles were successfully notified this run
-        notified_this_run = []
-        latest_article_data = None   # used only by 'published'
-
-        for article_data in new_articles:
-            title = article_data['title']
-            url_slug = title.replace(' ', '_')
-
-            # For Published category, verify the article has been properly reviewed
-            if category_config['message_type'] == 'published':
-                if not bot_instance.formatter.check_article_review_status(title):
-                    logger.warning(f"Skipping '{title}' - No valid review found (false detection)")
-                    continue
-
-            # Use the appropriate formatter to create the message
-            try:
-                message = bot_instance.formatter.format_message(article_data, url_slug)
-                logger.info(f"Final message for '{title}':\n{message}")
-                await broadcast_message(telegram_bot, message, category_config['telegram_targets'])
-
-                if category_config['message_type'] in ('developing', 'review'):
-                    # Mark as notified immediately so even a mid-run crash
-                    # won't re-send messages for articles already broadcast.
-                    bot_instance.notified_titles.add(title)
-                    notified_this_run.append(title)
-                else:
-                    latest_article_data = article_data
-
-            except Exception as e:
-                logger.error(f"Error formatting message for '{title}': {e}")
-                continue
-
-        # Persist state after processing all articles in this category
-        if category_config['message_type'] in ('developing', 'review'):
-            if notified_this_run:
-                # Pass current live category titles so pruning knows what's still active
-                current_titles = [a['title'] for a in bot_instance.get_category_members()]
-                bot_instance.save_notified_titles(current_titles)
-        else:
-            if latest_article_data:
-                bot_instance.save_last_checked_article(latest_article_data)
+    logger.info("Sending farewell message...")
+    await broadcast_message(telegram_bot, FAREWELL_MESSAGE, FAREWELL_TARGETS)
+    logger.info("Farewell message sent. Bot is shutting down.")
 
 
 if __name__ == '__main__':
